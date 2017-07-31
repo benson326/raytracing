@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -337,8 +338,10 @@ static void calculateBasisVectors(point3 u, point3 v, point3 w,
 /* @brief protect color value overflow */
 static void protect_color_overflow(color c)
 {
-    for (int i = 0; i < 3; i++)
-        if (c[i] > 1.0) c[i] = 1.0;
+
+    if (c[0] > 1.0) c[0] = 1.0;
+    if (c[1] > 1.0) c[1] = 1.0;
+    if (c[2] > 1.0) c[2] = 1.0;
 }
 
 static unsigned int ray_color(const point3 e, double t,
@@ -378,7 +381,6 @@ static unsigned int ray_color(const point3 e, double t,
 
     /* assume it is a shadow */
     SET_COLOR(object_color, 0.0, 0.0, 0.0);
-
     for (light_node light = lights; light; light = light->next) {
         /* calculate the intersection vector pointing at the light */
         subtract_vector(ip.point, light->element.position, l);
@@ -453,22 +455,28 @@ static unsigned int ray_color(const point3 e, double t,
 }
 
 /* @param background_color this is not ambient light */
-void raytracing(uint8_t *pixels, color background_color,
+/*void raytracing(uint8_t *pixels, color background_color,
                 rectangular_node rectangulars, sphere_node spheres,
                 light_node lights, const viewpoint *view,
-                int width, int height)
+                int width, int height)*/
+
+void raytracing(void *ray)
 {
+
+    rays_arg *arg = (rays_arg *) ray;
+
     point3 u, v, w, d;
     color object_color = { 0.0, 0.0, 0.0 };
 
     /* calculate u, v, w */
-    calculateBasisVectors(u, v, w, view);
+    calculateBasisVectors(u, v, w, arg->view);
 
     idx_stack stk;
 
     int factor = sqrt(SAMPLES);
-    for (int j = 0; j < height; j++) {
-        for (int i = 0; i < width; i++) {
+
+    for (int j = arg->t_id; j < arg->height; j += arg->t_num) {
+        for (int i = 0; i < arg->width; i++)  {
             double r = 0, g = 0, b = 0;
             /* MSAA */
             for (int s = 0; s < SAMPLES; s++) {
@@ -476,22 +484,22 @@ void raytracing(uint8_t *pixels, color background_color,
                 rayConstruction(d, u, v, w,
                                 i * factor + s / factor,
                                 j * factor + s % factor,
-                                view,
-                                width * factor, height * factor);
-                if (ray_color(view->vrp, 0.0, d, &stk, rectangulars, spheres,
-                              lights, object_color,
+                                arg->view,
+                                arg->width * factor, arg->height * factor);
+                if (ray_color(arg->view->vrp, 0.0, d, &stk, arg->rectangulars, arg->spheres,
+                              arg->lights, object_color,
                               MAX_REFLECTION_BOUNCES)) {
                     r += object_color[0];
                     g += object_color[1];
                     b += object_color[2];
                 } else {
-                    r += background_color[0];
-                    g += background_color[1];
-                    b += background_color[2];
+                    r += arg->background_color[0];
+                    g += arg->background_color[1];
+                    b += arg->background_color[2];
                 }
-                pixels[((i + (j * width)) * 3) + 0] = r * 255 / SAMPLES;
-                pixels[((i + (j * width)) * 3) + 1] = g * 255 / SAMPLES;
-                pixels[((i + (j * width)) * 3) + 2] = b * 255 / SAMPLES;
+                arg->pixels[((i + (j * arg->width)) * 3) + 0] = r * 255 / SAMPLES;
+                arg->pixels[((i + (j * arg->width)) * 3) + 1] = g * 255 / SAMPLES;
+                arg->pixels[((i + (j * arg->width)) * 3) + 2] = b * 255 / SAMPLES;
             }
         }
     }
